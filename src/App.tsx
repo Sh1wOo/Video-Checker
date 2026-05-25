@@ -1,0 +1,119 @@
+import { useEffect, useLayoutEffect, useRef } from "react";
+import gsap from "gsap";
+import "./App.css";
+import { HeroPanel } from "./components/HeroPanel";
+import { ProgressSection } from "./components/ProgressSection";
+import { StatsPanel } from "./components/StatsPanel";
+import { TreePanel } from "./components/TreePanel";
+import { useScan } from "./hooks/useScan";
+// import logo from "../public/b32d4286-273e-4c5d-9f4f-a0a852f20650.png";
+
+export default function App() {
+  const appRef = useRef<HTMLDivElement>(null);
+
+  const {
+    dark,
+    setDark,
+    folderPath,
+    loading,
+    progress,
+    result,
+    error,
+    percent,
+    pickFolder,
+    runScan,
+  } = useScan();
+
+  useLayoutEffect(() => {
+    if (!appRef.current) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+
+      tl.fromTo(".hero-panel", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.45 })
+        .fromTo(
+          ".toolbar > *",
+          { opacity: 0, y: 10 },
+          { opacity: 1, y: 0, stagger: 0.06, duration: 0.3 },
+          "-=0.18",
+        )
+        .fromTo(
+          ".progress-section > *",
+          { opacity: 0, y: 8 },
+          { opacity: 1, y: 0, stagger: 0.05, duration: 0.28 },
+          "-=0.16",
+        )
+        .fromTo(
+          ".side-column .panel, .tree-panel",
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, stagger: 0.08, duration: 0.38 },
+          "-=0.12",
+        )
+        .fromTo(
+          ".stat-card",
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, stagger: 0.05, duration: 0.28 },
+          "-=0.2",
+        );
+    }, appRef);
+
+    return () => ctx.revert();
+  }, []);
+
+  useEffect(() => {
+    if (!error || !appRef.current) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".error-box",
+        { opacity: 0, y: -8, scale: 0.98 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.28, ease: "power2.out" },
+      );
+    }, appRef);
+
+    return () => ctx.revert();
+  }, [error]);
+
+  useEffect(() => {
+    if (!result || !appRef.current) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".tree-panel, .stat-card",
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.35, stagger: 0.04, ease: "power2.out" },
+      );
+    }, appRef);
+
+    return () => ctx.revert();
+  }, [result]);
+
+  return (
+    <div ref={appRef} className="app-shell">
+      <div className="app-container">
+        <HeroPanel
+          dark={dark}
+          onToggleTheme={() => setDark((value) => !value)}
+          folderPath={folderPath}
+          loading={loading}
+          onPickFolder={pickFolder}
+          onRunScan={runScan}
+          // logo={logo}
+        />
+
+        <ProgressSection progress={progress} percent={percent} error={error} />
+
+        <div className="content-grid">
+          <div className="side-column">
+            <StatsPanel result={result} />
+          </div>
+
+          <TreePanel result={result} treeBuiltFolders={progress?.treeBuiltFolders ?? 0} />
+        </div>
+      </div>
+    </div>
+  );
+}
