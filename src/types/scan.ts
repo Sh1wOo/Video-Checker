@@ -37,6 +37,36 @@ export type ScanResult = {
   tree: FolderNode;
 };
 
+export type AiVideoFinding = {
+  path: string;
+  fileName: string;
+  durationSec: number;
+  roundedDurationSec: number;
+  issue: string;
+  scenario: string;
+  scenarioTitle: string;
+  detectedAction: string;
+  expectedAction: string;
+  confidence: number;
+  fileSizeBytes: number;
+  extension: string;
+  parentFolder: string;
+  modifiedUnix: number;
+  durationBucketSec: number;
+  isProblem: boolean;
+  problemKind: string;
+};
+
+export type AiAnalysisResult = {
+  rootPath: string;
+  totalVideoFiles: number;
+  checkedFiles: number;
+  shortVideos: AiVideoFinding[];
+  durationBandVideos: AiVideoFinding[];
+  brokenVideos: AiVideoFinding[];
+  passiveBehaviorVideos: AiVideoFinding[];
+};
+
 export type ProgressEvent =
   | {
       type: "progress";

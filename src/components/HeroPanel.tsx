@@ -7,12 +7,22 @@ type Props = {
   onToggleTheme: () => void;
   folderPath: string;
   loading: boolean;
+  onFolderPathChange: (value: string) => void;
   onPickFolder: () => void | Promise<void>;
   onRunScan: () => void | Promise<void>;
   logo?: string;
 };
 
-export function HeroPanel({ dark, onToggleTheme, folderPath, loading, onPickFolder, onRunScan, logo }: Props) {
+export function HeroPanel({
+  dark,
+  onToggleTheme,
+  folderPath,
+  loading,
+  onFolderPathChange,
+  onPickFolder,
+  onRunScan,
+  logo,
+}: Props) {
   return (
     <section className="panel hero-panel">
       <div className="hero-head">
@@ -37,6 +47,7 @@ export function HeroPanel({ dark, onToggleTheme, folderPath, loading, onPickFold
       <ScanToolbar
         folderPath={folderPath}
         loading={loading}
+        onFolderPathChange={onFolderPathChange}
         onPickFolder={onPickFolder}
         onRunScan={onRunScan}
       />

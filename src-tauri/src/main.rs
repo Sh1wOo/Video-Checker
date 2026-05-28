@@ -2,7 +2,7 @@
 
 mod scanner;
 
-use scanner::ScanResult;
+use scanner::{ai::AiAnalysisResult, ScanResult};
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use tauri_plugin_notification::NotificationExt;
@@ -65,13 +65,39 @@ async fn start_scan(
     }
 }
 
+#[tauri::command]
+async fn run_ai_analysis(root_path: String) -> Result<AiAnalysisResult, String> {
+    tokio::task::spawn_blocking(move || scanner::ai::analyze_path(&root_path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_video_file(path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let path = std::path::PathBuf::from(path);
+        if !path.exists() {
+            return Err("Файл уже удалён или не найден".to_string());
+        }
+        if !path.is_file() {
+            return Err("Удалять можно только файл видео".to_string());
+        }
+
+        std::fs::remove_file(&path)
+            .map_err(|error| format!("Не удалось удалить видео: {}", error))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(AppScanState::default()))
-        .invoke_handler(tauri::generate_handler![start_scan])
+        .invoke_handler(tauri::generate_handler![start_scan, run_ai_analysis, delete_video_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

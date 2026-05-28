@@ -7,7 +7,7 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
-import type { ProgressEvent, ScanProgress, ScanResult } from "../types/scan";
+import type { AiAnalysisResult, ProgressEvent, ScanProgress, ScanResult } from "../types/scan";
 import { formatDuration } from "../lib/format";
 
 export function useScan() {
@@ -15,6 +15,9 @@ export function useScan() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<AiAnalysisResult | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dark, setDark] = useState(
     document.documentElement.classList.contains("dark") ||
@@ -73,6 +76,15 @@ export function useScan() {
     return granted;
   }
 
+  function updateFolderPath(value: string) {
+    setFolderPath(value);
+    setResult(null);
+    setError(null);
+    setProgress(null);
+    setAiAnalysis(null);
+    setAiError(null);
+  }
+
   async function pickFolder() {
     const selected = await open({
       directory: true,
@@ -81,10 +93,7 @@ export function useScan() {
     });
 
     if (typeof selected === "string") {
-      setFolderPath(selected);
-      setResult(null);
-      setError(null);
-      setProgress(null);
+      updateFolderPath(selected);
     }
   }
 
@@ -93,7 +102,9 @@ export function useScan() {
 
     setLoading(true);
     setResult(null);
+    setAiAnalysis(null);
     setError(null);
+    setAiError(null);
     setProgress(null);
 
     try {
@@ -111,10 +122,25 @@ export function useScan() {
           res.summary.totalDurationSec,
         )}`,
       });
+
+      setAiLoading(true);
+      try {
+        const analysis = await invoke<AiAnalysisResult>("run_ai_analysis", {
+          rootPath: folderPath,
+        });
+        setAiAnalysis(analysis);
+      } catch (analysisError) {
+        setAiError(
+          typeof analysisError === "string" ? analysisError : "Не удалось выполнить AI Анализ",
+        );
+      } finally {
+        setAiLoading(false);
+      }
     } catch (e) {
       setError(typeof e === "string" ? e : "Не удалось выполнить сканирование");
     } finally {
       setLoading(false);
+      setAiLoading(false);
     }
   }
 
@@ -122,9 +148,13 @@ export function useScan() {
     dark,
     setDark,
     folderPath,
+    setFolderPath: updateFolderPath,
     loading,
+    aiLoading,
     progress,
     result,
+    aiAnalysis,
+    aiError,
     error,
     percent,
     pickFolder,

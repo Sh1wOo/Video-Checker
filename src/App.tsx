@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import "./App.css";
 import { HeroPanel } from "./components/HeroPanel";
@@ -10,14 +10,19 @@ import { useScan } from "./hooks/useScan";
 
 export default function App() {
   const appRef = useRef<HTMLDivElement>(null);
+  const [refreshMenu, setRefreshMenu] = useState<{ x: number; y: number } | null>(null);
 
   const {
     dark,
     setDark,
     folderPath,
+    setFolderPath,
     loading,
+    aiLoading,
     progress,
     result,
+    aiAnalysis,
+    aiError,
     error,
     percent,
     pickFolder,
@@ -91,6 +96,24 @@ export default function App() {
     return () => ctx.revert();
   }, [result]);
 
+  useEffect(() => {
+    function handleContextMenu(event: MouseEvent) {
+      event.preventDefault();
+      setRefreshMenu({ x: event.clientX, y: event.clientY });
+    }
+
+    function handleClick() {
+      setRefreshMenu(null);
+    }
+
+    window.addEventListener("contextmenu", handleContextMenu);
+    window.addEventListener("click", handleClick);
+    return () => {
+      window.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("click", handleClick);
+    };
+  }, []);
+
   return (
     <div ref={appRef} className="app-shell">
       <div className="app-container">
@@ -99,6 +122,7 @@ export default function App() {
           onToggleTheme={() => setDark((value) => !value)}
           folderPath={folderPath}
           loading={loading}
+          onFolderPathChange={setFolderPath}
           onPickFolder={pickFolder}
           onRunScan={runScan}
           // logo={logo}
@@ -111,9 +135,22 @@ export default function App() {
             <StatsPanel result={result} />
           </div>
 
-          <TreePanel result={result} treeBuiltFolders={progress?.treeBuiltFolders ?? 0} />
+          <TreePanel
+            result={result}
+            aiAnalysis={aiAnalysis}
+            aiLoading={aiLoading}
+            aiError={aiError}
+            treeBuiltFolders={progress?.treeBuiltFolders ?? 0}
+          />
         </div>
       </div>
+      {refreshMenu ? (
+        <div className="refresh-context-menu" style={{ left: refreshMenu.x, top: refreshMenu.y }}>
+          <button type="button" onClick={() => window.location.reload()}>
+            Обновить
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
