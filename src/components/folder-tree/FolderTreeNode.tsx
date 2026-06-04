@@ -10,14 +10,15 @@ import {
   HardDrive,
 } from "lucide-react";
 import type { FolderNode } from "../../types/scan";
-import { formatBytes, formatDuration } from "../../lib/format";
+import { formatBytes, formatHoursDecimal } from "../../lib/format";
 
 type Props = {
   node: FolderNode;
   depth?: number;
+  highlightPath?: string | null;
 };
 
-export function FolderTreeNode({ node, depth = 0 }: Props) {
+export function FolderTreeNode({ node, depth = 0, highlightPath }: Props) {
   const hasChildren = Boolean(node.children?.length);
   const [expanded, setExpanded] = useState(depth === 0);
   const [opening, setOpening] = useState(false);
@@ -109,7 +110,7 @@ export function FolderTreeNode({ node, depth = 0 }: Props) {
 
   return (
     <div className="tree-block">
-      <div className="tree-row" style={{ marginLeft: `${depth * 14}px` }}>
+      <div className={`tree-row tree-depth-${depth % 6} ${node.path === highlightPath ? "tree-row-highlight" : ""}`} style={{ marginLeft: `${depth * 14}px` }}>
         <button
           type="button"
           className="tree-main-button"
@@ -143,7 +144,7 @@ export function FolderTreeNode({ node, depth = 0 }: Props) {
           </span>
           <span className="badge badge-soft">
             <Clock3 className="badge-icon" />
-            {formatDuration(node.totalDurationSec)}
+            {formatHoursDecimal(node.totalDurationSec)}
           </span>
           <span className="badge">
             <HardDrive className="badge-icon" />
@@ -174,7 +175,7 @@ export function FolderTreeNode({ node, depth = 0 }: Props) {
         >
           <div className="tree-children">
             {node.children.map((child) => (
-              <FolderTreeNode key={child.path} node={child} depth={depth + 1} />
+              <FolderTreeNode key={child.path} node={child} depth={depth + 1} highlightPath={highlightPath} />
             ))}
           </div>
         </div>

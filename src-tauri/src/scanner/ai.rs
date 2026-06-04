@@ -1,15 +1,94 @@
 use crate::scanner::media::probe_duration;
 use crate::scanner::EXTENSIONS;
 use anyhow::{anyhow, Result};
-use serde::Serialize;
+use image::{DynamicImage, ImageFormat};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use walkdir::WalkDir;
+use yolo_rs::{image_to_yolo_input_tensor, inference};
+use yolo_rs::model::YoloModelSession;
 
+const YOLO_MODEL_PATH_ENV: &str = "YOLO_MODEL_PATH";
+const YOLO_CONF_THRESHOLD: f64 = 0.25;
 const SHORT_VIDEO_THRESHOLD_SEC: f64 = 4.0;
 const DURATION_BAND_MIN_SEC: f64 = 6.0;
 const DURATION_BAND_MAX_SEC: f64 = 30.0;
 const PASSIVE_BEHAVIOR_MIN_SEC: f64 = 7.0;
 const MIN_VALID_VIDEO_BYTES: u64 = 1024;
+
+#[derive(Debug, Clone, Deserialize)]
+struct YoloDetection {
+    label: String,
+    confidence: f64,
+}
+
+fn yolo_model_path() -> Option<PathBuf> {
+    std::env::var_os(YOLO_MODEL_PATH_ENV).map(PathBuf::from).filter(|path| path.exists())
+}
+
+fn find_ffmpeg_command() -> Option<&'static str> {
+    if Command::new("ffmpeg").arg("-version").output().is_ok() {
+        Some("ffmpeg")
+    } else {
+        None
+    }
+}
+
+fn extract_video_frame(path: &Path) -> Result<DynamicImage> {
+    let ffmpeg_command = find_ffmpeg_command()
+        .ok_or_else(|| anyhow!("ffmpeg не найден. Установите ffmpeg и добавьте его в PATH."))?;
+
+    let output = Command::new(ffmpeg_command)
+        .args([
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-ss",
+            "0",
+            "-i",
+            path.to_string_lossy().as_ref(),
+            "-frames:v",
+            "1",
+            "-f",
+            "image2pipe",
+            "-vcodec",
+            "png",
+            "-",
+        ])
+        .output()
+        .map_err(|error| anyhow!("Не удалось запустить ffmpeg: {}", error))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("ffmpeg не смог извлечь фрейм из видео: {}", stderr.trim()));
+    }
+
+    image::load_from_memory_with_format(&output.stdout, ImageFormat::Png)
+        .map_err(|error| anyhow!("Не удалось прочитать извлечённый фрейм: {}", error))
+}
+
+fn load_yolo_model(model_path: &Path) -> Result<YoloModelSession> {
+    let mut session = YoloModelSession::from_filename_v8(model_path)
+        .map_err(|error| anyhow!("Не удалось загрузить YOLO модель: {}", error))?;
+    session.probability_threshold = Some(YOLO_CONF_THRESHOLD as f32);
+    Ok(session)
+}
+
+fn detect_yolo_labels(path: &Path, model: &mut YoloModelSession) -> Result<Vec<YoloDetection>> {
+    let frame = extract_video_frame(path)?;
+    let input_tensor = image_to_yolo_input_tensor(&frame);
+    let outputs = inference(model, input_tensor.view())
+        .map_err(|error| anyhow!("YOLO inference завершилась с ошибкой: {}", error))?;
+
+    Ok(outputs
+        .into_iter()
+        .map(|output| YoloDetection {
+            label: output.label.to_string(),
+            confidence: output.confidence as f64,
+        })
+        .collect())
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,6 +142,14 @@ pub fn analyze_path(root_path: &str) -> Result<AiAnalysisResult> {
     let mut duration_band_videos = Vec::new();
     let mut broken_videos = Vec::new();
     let mut passive_behavior_videos = Vec::new();
+    let yolo_model = yolo_model_path();
+    let mut yolo_session = yolo_model.as_ref().and_then(|path| match load_yolo_model(path) {
+        Ok(session) => Some(session),
+        Err(error) => {
+            eprintln!("Не удалось загрузить YOLO модель: {}", error);
+            None
+        }
+    });
 
     for entry in WalkDir::new(&root)
         .into_iter()
@@ -153,7 +240,19 @@ pub fn analyze_path(root_path: &str) -> Result<AiAnalysisResult> {
         }
 
         if duration_sec >= PASSIVE_BEHAVIOR_MIN_SEC {
-            let Some((issue, detected_action, confidence)) = behavior_violation(&path) else {
+            let yolo_labels = if let Some(model_session) = yolo_session.as_mut() {
+                detect_yolo_labels(&path, model_session).unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+
+            let maybe_violation = if !yolo_labels.is_empty() {
+                yolo_behavior_violation(&yolo_labels).or_else(|| behavior_violation(&path))
+            } else {
+                behavior_violation(&path)
+            };
+
+            let Some((issue, detected_action, confidence)) = maybe_violation else {
                 continue;
             };
 
@@ -348,6 +447,63 @@ fn short_title_from_scenario(scenario: &str) -> String {
     } else {
         cleaned
     }
+}
+
+fn yolo_behavior_violation(labels: &[YoloDetection]) -> Option<(String, String, f64)> {
+    let normalized_labels: Vec<String> = labels
+        .iter()
+        .map(|label| label.label.to_lowercase())
+        .collect();
+
+    let max_confidence = |needle_list: &[&str]| {
+        labels
+            .iter()
+            .filter(|_| normalized_labels.iter().any(|norm| needle_list.iter().any(|needle| norm.contains(needle))))
+            .map(|d| d.confidence)
+            .fold(0.0, f64::max)
+    };
+
+    if normalized_labels.iter().any(|label| {
+        ["smoke", "cigarette", "кур", "сигар"].iter().any(|needle| label.contains(needle))
+    }) {
+        return Some((
+            "YOLO: обнаружено курение или дымовое поведение".to_string(),
+            "Курение".to_string(),
+            max_confidence(&["smoke", "cigarette", "кур", "сигар"]),
+        ));
+    }
+
+    if normalized_labels.iter().any(|label| {
+        ["phone", "mobile", "телефон", "смартф"].iter().any(|needle| label.contains(needle))
+    }) {
+        return Some((
+            "YOLO: обнаружен телефон в кадре".to_string(),
+            "Смотрит телефон".to_string(),
+            max_confidence(&["phone", "mobile", "телефон", "смартф"]),
+        ));
+    }
+
+    if normalized_labels.iter().any(|label| {
+        ["food", "eat", "еда", "стол", "кушан"].iter().any(|needle| label.contains(needle))
+    }) {
+        return Some((
+            "YOLO: обнаружена еда или приём пищи".to_string(),
+            "Ест".to_string(),
+            max_confidence(&["food", "eat", "еда", "стол", "кушан"]),
+        ));
+    }
+
+    if normalized_labels.iter().any(|label| {
+        ["person", "human", "talk", "говор", "разговор", "общ"].iter().any(|needle| label.contains(needle))
+    }) {
+        return Some((
+            "YOLO: обнаружено общение или человек на видео".to_string(),
+            "Общается с кем-то".to_string(),
+            max_confidence(&["person", "human", "talk", "говор", "разговор", "общ"]),
+        ));
+    }
+
+    None
 }
 
 fn behavior_violation(path: &Path) -> Option<(String, String, f64)> {

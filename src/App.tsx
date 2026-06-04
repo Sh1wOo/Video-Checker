@@ -4,7 +4,7 @@ import "./App.css";
 import { HeroPanel } from "./components/HeroPanel";
 import { ProgressSection } from "./components/ProgressSection";
 import { StatsPanel } from "./components/StatsPanel";
-import { TreePanel } from "./components/TreePanel";
+import { TreePanel, RecoveryPanel, SettingsPanel, PanelSettings } from "./components/TreePanel";
 import { useScan } from "./hooks/useScan";
 // import logo from "../public/b32d4286-273e-4c5d-9f4f-a0a852f20650.png";
 
@@ -12,6 +12,13 @@ export default function App() {
   const appRef = useRef<HTMLDivElement>(null);
   const [refreshMenu, setRefreshMenu] = useState<{ x: number; y: number } | null>(null);
 
+  const [page, setPage] = useState<"main" | "recovery" | "settings">("main");
+  const [panelSettings, setPanelSettings] = useState<PanelSettings>({
+    showAi: false,
+    showControl: false,
+    showIntelligence: true,
+    showRecovery: true,
+  });
   const {
     dark,
     setDark,
@@ -131,17 +138,54 @@ export default function App() {
         <ProgressSection progress={progress} percent={percent} error={error} />
 
         <div className="content-grid">
-          <div className="side-column">
-            <StatsPanel result={result} />
-          </div>
-
-          <TreePanel
-            result={result}
-            aiAnalysis={aiAnalysis}
-            aiLoading={aiLoading}
-            aiError={aiError}
-            treeBuiltFolders={progress?.treeBuiltFolders ?? 0}
-          />
+          {page === "main" ? (
+            <>
+              <div className="side-column">
+                <StatsPanel result={result} />
+              </div>
+              <TreePanel
+                result={result}
+                aiAnalysis={aiAnalysis}
+                aiLoading={aiLoading}
+                aiError={aiError}
+                treeBuiltFolders={progress?.treeBuiltFolders ?? 0}
+                settings={panelSettings}
+              />
+            </>
+          ) : (
+            <div className="page-panel panel">
+              {page === "recovery" ? (
+                <RecoveryPanel analysis={aiAnalysis} />
+              ) : (
+                <SettingsPanel settings={panelSettings} onChange={setPanelSettings} />
+              )}
+            </div>
+          )}
+        </div>
+        <div className="bottom-dock">
+          <button
+            className={`bottom-dock-button ${page === "main" ? "bottom-dock-active" : ""}`}
+            type="button"
+            onClick={() => setPage("main")}
+          >
+            Главная
+          </button>
+          {panelSettings.showRecovery ? (
+            <button
+              className={`bottom-dock-button ${page === "recovery" ? "bottom-dock-active" : ""}`}
+              type="button"
+              onClick={() => setPage("recovery")}
+            >
+              Восстановление
+            </button>
+          ) : null}
+          <button
+            className={`bottom-dock-button ${page === "settings" ? "bottom-dock-active" : ""}`}
+            type="button"
+            onClick={() => setPage("settings")}
+          >
+            Настройки
+          </button>
         </div>
       </div>
       {refreshMenu ? (

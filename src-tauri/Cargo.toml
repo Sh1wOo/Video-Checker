@@ -26,6 +26,8 @@ anyhow = "1"
 parking_lot = "0.12"
 rayon = "1.10"
 rusqlite = { version = "0.32", features = ["bundled"] }
+yolo-rs = "0.2.2"
+image = "0.25.10"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

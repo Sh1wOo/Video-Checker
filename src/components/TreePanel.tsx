@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { ExternalLink, Info, Search, Trash2 } from "lucide-react";
+import { ExternalLink, FolderOpen, Info, Search, Trash2 } from "lucide-react";
 import type { AiAnalysisResult, AiVideoFinding, FolderNode, ScanResult } from "../types/scan";
-import { formatBytes } from "../lib/format";
+import { formatBytes, formatDuration, formatHoursDecimal } from "../lib/format";
 import { FolderTree } from "./folder-tree/FolderTree";
 import { VirtualFolderTree } from "./folder-tree/VirtualFolderTree";
 
@@ -14,10 +14,19 @@ type Props = {
   aiLoading: boolean;
   aiError: string | null;
   treeBuiltFolders?: number;
+  settings: PanelSettings;
 };
 
 type ActiveTab = "tree" | "ai" | "control" | "intelligence";
 type AiSort = "duration" | "confidence" | "name";
+type TreeSort = "path" | "name" | "files" | "duration";
+
+export type PanelSettings = {
+  showAi: boolean;
+  showControl: boolean;
+  showIntelligence: boolean;
+  showRecovery: boolean;
+};
 
 type AnalysisMetrics = {
   checkedFiles: number;
@@ -51,26 +60,33 @@ type ScenarioNote = {
 
 const GSAP_TREE_LIMIT = 1800;
 
-export function TreePanel({ result, aiAnalysis, aiLoading, aiError, treeBuiltFolders = 0 }: Props) {
+export function TreePanel({ result, aiAnalysis, aiLoading, aiError, treeBuiltFolders = 0, settings }: Props) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("tree");
   const [treeQuery, setTreeQuery] = useState("");
+  const [treeSort, setTreeSort] = useState<TreeSort>("path");
   const [deletedPaths, setDeletedPaths] = useState<Set<string>>(() => new Set());
+  const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null);
+  const [highlightedFolderPath, setHighlightedFolderPath] = useState<string | null>(null);
   const [infoModalText, setInfoModalText] = useState<string | null>(null);
   const [scenarioNotes, setScenarioNotes] = useState<ScenarioNote[]>([]);
   const useVirtualTree = treeBuiltFolders > GSAP_TREE_LIMIT;
+  const sortedTree = useMemo(() => {
+    if (!result) return null;
+    return sortFolderTree(result.tree, treeSort);
+  }, [result, treeSort]);
   const treeMatches = useMemo(() => {
-    if (!result || !treeQuery.trim()) return [];
-    return flattenTree(result.tree).filter((node) => {
-      const query = treeQuery.trim().toLowerCase();
+    if (!sortedTree || !treeQuery.trim()) return [];
+    const query = treeQuery.trim().toLowerCase();
+    return flattenTree(sortedTree).filter((node) => {
       return node.name.toLowerCase().includes(query) || node.path.toLowerCase().includes(query);
     }).slice(0, 12);
-  }, [result, treeQuery]);
+  }, [sortedTree, treeQuery]);
 
   useEffect(() => {
-    if (result) {
-      setActiveTab("ai");
-    }
-  }, [result]);
+    if (activeTab === "ai" && !settings.showAi) setActiveTab("tree");
+    if (activeTab === "control" && !settings.showControl) setActiveTab("tree");
+    if (activeTab === "intelligence" && !settings.showIntelligence) setActiveTab("tree");
+  }, [activeTab, settings]);
 
   useEffect(() => {
     function handleInfo(event: Event) {
@@ -85,53 +101,47 @@ export function TreePanel({ result, aiAnalysis, aiLoading, aiError, treeBuiltFol
   return (
     <section className="panel tree-panel">
       <div className="panel-header with-border tree-panel-header">
-        <h2 className="panel-title">
-          Дерево папок
-          <InfoTip text="Здесь собраны результаты скана: структура папок, AI-анализ, контроль качества и сценарии по папкам." />
-        </h2>
-        <div className="panel-tabs" role="tablist" aria-label="Результаты сканирования">
-          <button
-            className={`panel-tab ${activeTab === "tree" ? "panel-tab-active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "tree"}
-            onClick={() => setActiveTab("tree")}
-          >
-            Папки
-            <InfoTip text="Иерархия найденных папок с количеством видео, длительностью и быстрым поиском." />
-          </button>
-          <button
-            className={`panel-tab ${activeTab === "ai" ? "panel-tab-active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "ai"}
-            onClick={() => setActiveTab("ai")}
-          >
-            AI Анализ
-            <span className="tab-badge">new</span>
-            <InfoTip text="Короткие видео, нарушения сценариев, KPI качества, графики и действия с файлами." />
-          </button>
-          <button
-            className={`panel-tab ${activeTab === "control" ? "panel-tab-active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "control"}
-            onClick={() => setActiveTab("control")}
-          >
-            Контроль
-            <InfoTip text="Enterprise-обзор, очередь проверки, аудит и сценарии по всем папкам." />
-          </button>
-          <button
-            className={`panel-tab ${activeTab === "intelligence" ? "panel-tab-active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "intelligence"}
-            onClick={() => setActiveTab("intelligence")}
-          >
-            Intelligence
-            <span className="tab-badge">pro</span>
-            <InfoTip text="Executive-слой: приоритеты, сценарные заметки и сводка по действиям для быстрой проверки." />
-          </button>
+        <div>
+          <h2 className="panel-title">
+            Дерево папок
+            <InfoTip text="Здесь собраны результаты скана: структура папок, AI-анализ, контроль качества и сценарии по папкам." />
+          </h2>
+          <div className="panel-tabs">
+            <button
+              className={`panel-tab ${activeTab === "tree" ? "panel-tab-active" : ""}`}
+              type="button"
+              onClick={() => setActiveTab("tree")}
+            >
+              Дерево
+            </button>
+            {settings.showAi ? (
+              <button
+                className={`panel-tab ${activeTab === "ai" ? "panel-tab-active" : ""}`}
+                type="button"
+                onClick={() => setActiveTab("ai")}
+              >
+                AI
+              </button>
+            ) : null}
+            {settings.showControl ? (
+              <button
+                className={`panel-tab ${activeTab === "control" ? "panel-tab-active" : ""}`}
+                type="button"
+                onClick={() => setActiveTab("control")}
+              >
+                Контроль
+              </button>
+            ) : null}
+            {settings.showIntelligence ? (
+              <button
+                className={`panel-tab ${activeTab === "intelligence" ? "panel-tab-active" : ""}`}
+                type="button"
+                onClick={() => setActiveTab("intelligence")}
+              >
+                Intelligence
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -141,11 +151,24 @@ export function TreePanel({ result, aiAnalysis, aiLoading, aiError, treeBuiltFol
             <div className="empty-state">Выберите папку и запустите подсчёт.</div>
           ) : (
             <>
-              <TreeManagement query={treeQuery} onQueryChange={setTreeQuery} matches={treeMatches} root={result.tree} />
+              <TreeManagement
+                query={treeQuery}
+                onQueryChange={setTreeQuery}
+                sort={treeSort}
+                onSortChange={setTreeSort}
+                matches={treeMatches}
+                root={sortedTree ?? result.tree}
+              />
+              {selectedVideoPath ? (
+                <div className="selected-video-banner">
+                  <strong>Выбрано видео:</strong> {selectedVideoPath}
+                  {highlightedFolderPath ? <small>Папка: {highlightedFolderPath}</small> : null}
+                </div>
+              ) : null}
               {useVirtualTree ? (
-                <VirtualFolderTree node={result.tree} height={620} rowHeight={66} maxRows={8000} />
+                <VirtualFolderTree node={result.tree} height={620} rowHeight={66} maxRows={8000} highlightPath={highlightedFolderPath} />
               ) : (
-                <FolderTree node={result.tree} />
+                <FolderTree node={result.tree} highlightPath={highlightedFolderPath} />
               )}
             </>
           )}
@@ -168,6 +191,11 @@ export function TreePanel({ result, aiAnalysis, aiLoading, aiError, treeBuiltFol
           hasScan={Boolean(result)}
           deletedPaths={deletedPaths}
           onDeleted={(path) => setDeletedPaths((paths) => new Set(paths).add(path))}
+          onOpenFolder={(folderPath, videoPath) => {
+            setHighlightedFolderPath(folderPath);
+            setSelectedVideoPath(videoPath);
+            openPathInExplorer(folderPath);
+          }}
         />
       )}
       {infoModalText ? <InfoModal text={infoModalText} onClose={() => setInfoModalText(null)} /> : null}
@@ -178,29 +206,39 @@ export function TreePanel({ result, aiAnalysis, aiLoading, aiError, treeBuiltFol
 function TreeManagement({
   query,
   onQueryChange,
+  sort,
+  onSortChange,
   matches,
   root,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
+  sort: TreeSort;
+  onSortChange: (value: TreeSort) => void;
   matches: FolderNode[];
   root: FolderNode;
 }) {
   return (
     <div className="management-bar tree-management-bar">
-      <InfoTip text="Управление деревом: поиск папки, быстрые совпадения и открытие корневого каталога." />
+      <InfoTip text="Управление деревом: поиск папки, сортировка и открытие корневого каталога." />
       <label className="management-search">
         <Search className="icon" />
         <input value={query} placeholder="Найти папку в дереве" onChange={(event) => onQueryChange(event.target.value)} />
       </label>
-      <button className="badge badge-open-folder" type="button" onClick={() => openVideo(root.path)}>
+      <select value={sort} onChange={(event) => onSortChange(event.target.value as TreeSort)}>
+        <option value="path">Сортировка: путь</option>
+        <option value="name">Сортировка: имя</option>
+        <option value="files">Сортировка: файлы</option>
+        <option value="duration">Сортировка: длительность</option>
+      </select>
+      <button className="badge badge-open-folder" type="button" onClick={() => openPathInExplorer(root.path)}>
         <ExternalLink className="badge-icon" />
         Открыть корень
       </button>
       {query.trim() ? (
         <div className="tree-search-results">
           {matches.length ? matches.map((node) => (
-            <button className="tree-search-hit" type="button" key={node.path} onClick={() => openVideo(node.path)} title={node.path}>
+            <button className="tree-search-hit" type="button" key={node.path} onClick={() => openPathInExplorer(node.path)} title={node.path}>
               <span>{node.name}</span>
               <small>{node.totalVideoFiles} видео</small>
             </button>
@@ -218,6 +256,7 @@ function AiAnalysisPanel({
   hasScan,
   deletedPaths,
   onDeleted,
+  onOpenFolder,
 }: {
   analysis: AiAnalysisResult | null;
   loading: boolean;
@@ -225,6 +264,7 @@ function AiAnalysisPanel({
   hasScan: boolean;
   deletedPaths: Set<string>;
   onDeleted: (path: string) => void;
+  onOpenFolder?: (folderPath: string, videoPath: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<AiSort>("duration");
@@ -254,6 +294,10 @@ function AiAnalysisPanel({
   const brokenVideos = sortFindings(filterFindings(analysis.brokenVideos, query, deletedPaths), sort);
   const behaviorVideos = sortFindings(filterFindings(analysis.passiveBehaviorVideos, query, deletedPaths), sort);
   const metrics = buildAnalysisMetrics(analysis, deletedPaths);
+
+  const handleOpenFolder = (folderPath: string, videoPath: string) => {
+    onOpenFolder?.(folderPath, videoPath);
+  };
 
   return (
     <div className="ai-analysis-panel">
@@ -315,6 +359,7 @@ function AiAnalysisPanel({
           empty="Видео 0-4 секунды не найдено."
           allowDelete
           onDeleted={onDeleted}
+          onOpenFolder={handleOpenFolder}
         />
       ) : null}
       {showDurationBand ? (
@@ -323,6 +368,7 @@ function AiAnalysisPanel({
           items={durationBandVideos}
           empty="Видео в диапазоне 6-30 секунд не найдено."
           onDeleted={onDeleted}
+          onOpenFolder={handleOpenFolder}
         />
       ) : null}
       {showBroken ? (
@@ -331,6 +377,7 @@ function AiAnalysisPanel({
           items={brokenVideos}
           empty="Битые видео не найдены."
           onDeleted={onDeleted}
+          onOpenFolder={handleOpenFolder}
         />
       ) : null}
       {showIssues ? (
@@ -339,6 +386,7 @@ function AiAnalysisPanel({
           items={behaviorVideos}
           empty="Нарушений длиннее 7 секунд не найдено."
           onDeleted={onDeleted}
+          onOpenFolder={handleOpenFolder}
         />
       ) : null}
     </div>
@@ -360,7 +408,7 @@ function AnalysisKpis({ metrics }: { metrics: AnalysisMetrics }) {
       </div>
       <div className="kpi-card">
         <span>Средняя длина сценариев <InfoTip text="Средняя округлённая длительность видео из диапазона коротких сценариев 6-30 секунд." /></span>
-        <strong>{formatCeilDuration(Math.ceil(metrics.averageShortSec))}</strong>
+        <strong>{formatDuration(Math.ceil(metrics.averageShortSec))}</strong>
         <small>диапазон: 6-30 секунд</small>
       </div>
       <div className="kpi-card">
@@ -480,12 +528,14 @@ function AiFindingList({
   empty,
   allowDelete = false,
   onDeleted,
+  onOpenFolder,
 }: {
   title: string;
   items: AiAnalysisResult["shortVideos"];
   empty: string;
   allowDelete?: boolean;
   onDeleted?: (path: string) => void;
+  onOpenFolder?: (folderPath: string, videoPath: string) => void;
 }) {
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
@@ -505,7 +555,7 @@ function AiFindingList({
                 <span>{item.path}</span>
               </div>
               <div className="ai-finding-meta">
-                <span>{formatCeilDuration(item.roundedDurationSec)}</span>
+                <span>{formatDuration(item.roundedDurationSec)}</span>
                 <small>AI сценарий: {item.scenarioTitle}</small>
                 <small>{item.detectedAction}</small>
                 <small>Сценарий: {item.scenario}</small>
@@ -520,6 +570,15 @@ function AiFindingList({
                 <button className="badge badge-open-folder ai-open-video" type="button" onClick={() => openVideo(item.path)}>
                   <ExternalLink className="badge-icon" />
                   Открыть видео
+                </button>
+                <button
+                  className="badge badge-open-folder ai-open-video"
+                  type="button"
+                  disabled={!item.parentFolder}
+                  onClick={() => onOpenFolder?.(item.parentFolder, item.path)}
+                >
+                  <FolderOpen className="badge-icon" />
+                  Открыть папку
                 </button>
                 {allowDelete ? (
                   <button
@@ -594,7 +653,7 @@ function ControlPanel({
               {folders.map((folder) => (
                 <button className="control-folder-row" type="button" key={folder.path} onClick={() => openVideo(folder.path)} title={folder.path}>
                   <span>{folder.name}</span>
-                  <small>{folder.totalVideoFiles} видео · {formatCeilDuration(Math.ceil(folder.totalDurationSec))}</small>
+                  <small>{folder.totalVideoFiles} видео · {formatHoursDecimal(Math.ceil(folder.totalDurationSec))}</small>
                 </button>
               ))}
             </div>
@@ -676,7 +735,7 @@ function IntelligencePanel({
               <button className="priority-row" type="button" key={item.path} onClick={() => openVideo(item.path)} title={item.path}>
                 <span>{item.scenarioTitle}</span>
                 <strong>{item.fileName}</strong>
-                <small>{formatCeilDuration(item.roundedDurationSec)} · {formatBytes(item.fileSizeBytes)}</small>
+                <small>{formatDuration(item.roundedDurationSec)} · {formatBytes(item.fileSizeBytes)}</small>
               </button>
             ))}
           </div>
@@ -755,7 +814,7 @@ function FolderScenarioInventory({ scenarios }: { scenarios: FolderScenario[] })
             <span className="scenario-pill">{scenario.scenarioTitle}</span>
             <strong>{scenario.owner}</strong>
             <span>{scenario.name}</span>
-            <small>{scenario.totalVideoFiles} видео · {formatCeilDuration(Math.ceil(scenario.totalDurationSec))}</small>
+            <small>{scenario.totalVideoFiles} видео · {formatHoursDecimal(Math.ceil(scenario.totalDurationSec))}</small>
           </button>
         ))}
       </div>
@@ -837,28 +896,214 @@ function InfoModal({ text, onClose }: { text: string; onClose: () => void }) {
   );
 }
 
-async function openVideo(path: string) {
+async function openPathInExplorer(path: string) {
   try {
     await openPath(path);
   } catch (error) {
-    console.error("Не удалось открыть видео:", error);
+    console.error("Не удалось открыть путь:", error);
   }
 }
 
-function formatCeilDuration(seconds: number) {
-  if (seconds >= 3600) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.ceil((seconds % 3600) / 60);
-    return `${hours} ч ${minutes} мин`;
+async function openVideo(path: string) {
+  return openPathInExplorer(path);
+}
+
+export function RecoveryPanel({ analysis }: { analysis: AiAnalysisResult | null }) {
+  const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null);
+  const [recoverMessage, setRecoverMessage] = useState<string | null>(null);
+  const [isRecovering, setIsRecovering] = useState(false);
+  const brokenVideos = analysis?.brokenVideos ?? [];
+  const selectedVideo = brokenVideos.find((item) => item.path === selectedVideoPath) ?? null;
+
+  const outputPath = selectedVideoPath ? getRecoveredPath(selectedVideoPath) : "";
+
+  function getRecoveredPath(path: string) {
+    const separatorIndex = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+    const fileName = separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
+    const base = path.slice(0, path.length - fileName.length);
+    const dotIndex = fileName.lastIndexOf(".");
+    if (dotIndex > 0) {
+      return `${base}${fileName.slice(0, dotIndex)}_recovered${fileName.slice(dotIndex)}`;
+    }
+    return `${base}${fileName}_recovered`;
   }
 
-  if (seconds >= 60) {
-    const minutes = Math.floor(seconds / 60);
-    const restSeconds = seconds % 60;
-    return `${minutes} мин ${restSeconds} с`;
+  async function handleRecover() {
+    if (!selectedVideoPath) return;
+    setRecoverMessage(null);
+    setIsRecovering(true);
+
+    try {
+      const outputFolder = selectedVideoPath.replace(/[^\\/]+$/, "");
+      const result = await invoke<string>("recover_broken_video", {
+        path: selectedVideoPath,
+        outputFolder,
+      });
+      setRecoverMessage(result || "Восстановление завершено.");
+    } catch (error) {
+      setRecoverMessage(typeof error === "string" ? error : "Не удалось запустить восстановление.");
+    } finally {
+      setIsRecovering(false);
+    }
   }
 
-  return `${seconds} с`;
+  return (
+    <div className="recovery-panel">
+      <div className="recovery-hero">
+        <div>
+          <p className="eyebrow">Восстановление</p>
+          <h3>Выберите битый файл и восстановите его одним кликом</h3>
+          <p>AI уже пометил проблемные видео. Просто выберите файл, и система восстановит копию рядом с оригиналом.</p>
+        </div>
+        <div className="recovery-hero-cards">
+          <div className="recovery-card">
+            <strong>Быстрый выбор</strong>
+            <p>Никаких дополнительных папок: выбираете только битый файл.</p>
+          </div>
+          <div className="recovery-card">
+            <strong>Автоматический результат</strong>
+            <p>Файл восстанавливается рядом с оригиналом, с суффиксом <code>_recovered</code>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="recovery-restore">
+        <div className="recovery-topline">
+          <div>
+            <h4>Проверенные битые файлы</h4>
+            <p>Выберите один из найденных битых файлов и запустите восстановление.</p>
+          </div>
+          <span className="recovery-chip">{brokenVideos.length} файлов</span>
+        </div>
+
+        <div className="recovery-controls">
+          {brokenVideos.length ? (
+            <>
+              <div className="recovery-file-grid">
+                {brokenVideos.map((item) => (
+                  <button
+                    key={item.path}
+                    type="button"
+                    className={`recovery-file-card ${selectedVideoPath === item.path ? "recovery-file-card-active" : ""}`}
+                    onClick={() => setSelectedVideoPath(item.path)}
+                  >
+                    <div className="recovery-file-head">
+                      <strong>{item.fileName}</strong>
+                      <span>{item.issue || "Неизвестная причина"}</span>
+                    </div>
+                    <div className="recovery-file-meta">
+                      <small>{item.parentFolder}</small>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="recovery-summary-grid">
+                <div className="recovery-selected-card">
+                  <span className="recovery-selected-label">Выбранный файл</span>
+                  <strong>{selectedVideo?.fileName ?? "Не выбран файл"}</strong>
+                  {selectedVideo ? (
+                    <div className="recovery-selected-meta">
+                      <span>Папка: {selectedVideo.parentFolder}</span>
+                      <span>Причина: {selectedVideo.issue || "Не указана"}</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="recovery-output-card">
+                  <span className="recovery-selected-label">Путь восстановления</span>
+                  <code>{outputPath || "Выберите битый файл"}</code>
+                </div>
+              </div>
+
+              <div className="recovery-actions-row">
+                <button
+                  className="badge badge-open-folder recovery-action"
+                  type="button"
+                  disabled={!selectedVideoPath || isRecovering}
+                  onClick={handleRecover}
+                >
+                  {isRecovering ? "Восстановление..." : "Восстановить файл"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">Нет найденных битых видео. Запустите AI-анализ или проверьте результаты скана.</div>
+          )}
+
+          {recoverMessage ? <div className="recovery-message">{recoverMessage}</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function SettingsPanel({ settings, onChange }: { settings: PanelSettings; onChange: (settings: PanelSettings) => void }) {
+  const toggleOptions: Array<{
+    key: keyof PanelSettings;
+    title: string;
+    description: string;
+  }> = [
+    { key: "showAi", title: "AI Анализ", description: "Показывать блок AI-результатов в дереве." },
+    { key: "showControl", title: "Контроль", description: "Включить панель контроля качества и удаление подозрительных файлов." },
+    { key: "showIntelligence", title: "Intelligence", description: "Показать стратегические метрики и приоритеты просмотра." },
+    { key: "showRecovery", title: "Восстановление", description: "Показывать страницу восстановления битых файлов." },
+  ];
+
+  return (
+    <div className="settings-panel">
+      <div className="settings-header">
+        <div>
+          <h3>Настройки интерфейса</h3>
+          <p>Управляйте видимостью блоков и делайте рабочее пространство чище.</p>
+        </div>
+      </div>
+      <div className="settings-grid">
+        {toggleOptions.map((option) => (
+          <div key={option.key} className="settings-option">
+            <div>
+              <span>{option.title}</span>
+              <p>{option.description}</p>
+            </div>
+            <label className="settings-switch">
+              <div className="switch-control">
+                <input
+                  type="checkbox"
+                  checked={settings[option.key]}
+                  onChange={(event) => onChange({ ...settings, [option.key]: event.target.checked })}
+                />
+                <span className="switch-track">
+                  <span className="switch-thumb" />
+                </span>
+              </div>
+            </label>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function sortFolderTree(node: FolderNode, sortBy: TreeSort): FolderNode {
+  const sortedChildren = node.children
+    .map((child) => sortFolderTree(child, sortBy))
+    .sort((left, right) => {
+      if (sortBy === "files") {
+        return right.totalVideoFiles - left.totalVideoFiles;
+      }
+      if (sortBy === "duration") {
+        return right.totalDurationSec - left.totalDurationSec;
+      }
+      if (sortBy === "name") {
+        return left.name.localeCompare(right.name, "ru", { sensitivity: "base" });
+      }
+      return left.path.localeCompare(right.path, "ru", { sensitivity: "base" });
+    });
+
+  return {
+    ...node,
+    children: sortedChildren,
+  };
 }
 
 async function deleteVideo(

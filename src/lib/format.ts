@@ -21,5 +21,9 @@ export function formatDuration(totalSeconds = 0) {
 }
 
 export function formatHours(totalSeconds = 0) {
-  return `${(totalSeconds / 3600).toFixed(2)} ч`;
+  return `${(totalSeconds / 3600).toFixed(1)} ч`;
+}
+
+export function formatHoursDecimal(totalSeconds = 0) {
+  return `${(totalSeconds / 3600).toFixed(1)} ч`;
 }

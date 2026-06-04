@@ -91,13 +91,28 @@ async fn delete_video_file(path: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn save_report(path: String, content: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let path = std::path::PathBuf::from(path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("Не удалось создать папку для файла: {}", error))?;
+        }
+        std::fs::write(&path, content)
+            .map_err(|error| format!("Не удалось сохранить отчёт: {}", error))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(AppScanState::default()))
-        .invoke_handler(tauri::generate_handler![start_scan, run_ai_analysis, delete_video_file])
+        .invoke_handler(tauri::generate_handler![start_scan, run_ai_analysis, delete_video_file, save_report])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

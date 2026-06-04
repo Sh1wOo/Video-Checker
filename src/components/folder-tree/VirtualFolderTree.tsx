@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Clock3, Film, Folder as FolderIcon, HardDrive } from "lucide-react";
 import type { FolderNode } from "../../types/scan";
-import { formatBytes, formatDuration } from "../../lib/format";
+import { formatBytes, formatHoursDecimal } from "../../lib/format";
 import { flattenTree } from "../../lib/tree";
 
 type Props = {
@@ -9,6 +9,7 @@ type Props = {
   height?: number;
   rowHeight?: number;
   maxRows?: number;
+  highlightPath?: string | null;
 };
 
 export function VirtualFolderTree({
@@ -16,6 +17,7 @@ export function VirtualFolderTree({
   height = 680,
   rowHeight = 66,
   maxRows = 8000,
+  highlightPath,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set([node.path]));
   const [scrollTop, setScrollTop] = useState(0);
@@ -58,7 +60,11 @@ export function VirtualFolderTree({
         <div className="virtual-tree-spacer" style={{ height: totalHeight }}>
           <div className="virtual-tree-window" style={{ transform: `translateY(${offsetY}px)` }}>
             {visibleRows.map(({ id, node: currentNode, depth, hasChildren, expanded: isExpanded }) => (
-              <div key={id} className="tree-row virtual-tree-row" style={{ height: rowHeight - 8 }}>
+              <div
+                key={id}
+                className={`tree-row virtual-tree-row tree-depth-${depth % 6} ${currentNode.path === highlightPath ? "tree-row-highlight" : ""}`}
+                style={{ height: rowHeight - 8 }}
+              >
                 <button
                   type="button"
                   className="tree-main-button"
@@ -87,7 +93,7 @@ export function VirtualFolderTree({
                   </span>
                   <span className="badge badge-soft">
                     <Clock3 className="badge-icon" />
-                    {formatDuration(currentNode.totalDurationSec ?? 0)}
+                    {formatHoursDecimal(currentNode.totalDurationSec ?? 0)}
                   </span>
                   <span className="badge">
                     <HardDrive className="badge-icon" />
