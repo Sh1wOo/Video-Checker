@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { ExternalLink, FolderOpen, Info, Search, Trash2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, FolderOpen, Info, Loader2, RotateCcw, Search, Trash2, TriangleAlert } from "lucide-react";
 import type { AiAnalysisResult, AiVideoFinding, FolderNode, ScanResult } from "../types/scan";
 import { formatBytes, formatDuration, formatHoursDecimal } from "../lib/format";
 import { FolderTree } from "./folder-tree/FolderTree";
 import { VirtualFolderTree } from "./folder-tree/VirtualFolderTree";
+import { FolderTree as FolderTreeIcon, BrainCircuit, ShieldCheck, Lightbulb, FileVideo} from "lucide-react";
+import { open } from '@tauri-apps/plugin-dialog';
+
 
 type Props = {
   result: ScanResult | null;
@@ -101,48 +104,48 @@ export function TreePanel({ result, aiAnalysis, aiLoading, aiError, treeBuiltFol
   return (
     <section className="panel tree-panel">
       <div className="panel-header with-border tree-panel-header">
-        <div>
+
           <h2 className="panel-title">
             Дерево папок
             <InfoTip text="Здесь собраны результаты скана: структура папок, AI-анализ, контроль качества и сценарии по папкам." />
           </h2>
-          <div className="panel-tabs">
-            <button
-              className={`panel-tab ${activeTab === "tree" ? "panel-tab-active" : ""}`}
-              type="button"
-              onClick={() => setActiveTab("tree")}
-            >
-              Дерево
-            </button>
-            {settings.showAi ? (
-              <button
-                className={`panel-tab ${activeTab === "ai" ? "panel-tab-active" : ""}`}
-                type="button"
-                onClick={() => setActiveTab("ai")}
-              >
-                AI
-              </button>
-            ) : null}
-            {settings.showControl ? (
-              <button
-                className={`panel-tab ${activeTab === "control" ? "panel-tab-active" : ""}`}
-                type="button"
-                onClick={() => setActiveTab("control")}
-              >
-                Контроль
-              </button>
-            ) : null}
-            {settings.showIntelligence ? (
-              <button
-                className={`panel-tab ${activeTab === "intelligence" ? "panel-tab-active" : ""}`}
-                type="button"
-                onClick={() => setActiveTab("intelligence")}
-              >
-                Intelligence
-              </button>
-            ) : null}
-          </div>
-        </div>
+<div className="panel-tabs">
+  <button
+    className={`panel-tab${activeTab === "tree" ? " panel-tab-active" : ""}`}
+    onClick={() => setActiveTab("tree")}
+  >
+    <FolderTreeIcon className="icon" />
+    Дерево
+  </button>
+  {settings.showAi ? (
+    <button
+      className={`panel-tab${activeTab === "ai" ? " panel-tab-active" : ""}`}
+      onClick={() => setActiveTab("ai")}
+    >
+      <BrainCircuit className="icon" />
+      AI Анализ
+    </button>
+  ) : null}
+  {settings.showControl ? (
+    <button
+      className={`panel-tab${activeTab === "control" ? " panel-tab-active" : ""}`}
+      onClick={() => setActiveTab("control")}
+    >
+      <ShieldCheck className="icon" />
+      Контроль
+    </button>
+  ) : null}
+  {settings.showIntelligence ? (
+    <button
+      className={`panel-tab${activeTab === "intelligence" ? " panel-tab-active" : ""}`}
+      onClick={() => setActiveTab("intelligence")}
+    >
+      <Lightbulb className="icon" />
+      Intelligence
+    </button>
+  ) : null}
+</div>
+
       </div>
 
       {activeTab === "tree" ? (
@@ -909,181 +912,389 @@ async function openVideo(path: string) {
 }
 
 export function RecoveryPanel({ analysis }: { analysis: AiAnalysisResult | null }) {
-  const [selectedVideoPath, setSelectedVideoPath] = useState<string | null>(null);
-  const [recoverMessage, setRecoverMessage] = useState<string | null>(null);
-  const [isRecovering, setIsRecovering] = useState(false);
   const brokenVideos = analysis?.brokenVideos ?? [];
-  const selectedVideo = brokenVideos.find((item) => item.path === selectedVideoPath) ?? null;
+  const [selected, setSelected] = useState<string | null>(null);
+  const [recovering, setRecovering] = useState<Set<string>>(() => new Set());
+  const [results, setResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
+  const [recoverAll, setRecoverAll] = useState(false);
+  const [recoverAllMsg, setRecoverAllMsg] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
 
-  const outputPath = selectedVideoPath ? getRecoveredPath(selectedVideoPath) : "";
+  const filtered = brokenVideos.filter(v =>
+    !filter.trim() ||
+    v.fileName.toLowerCase().includes(filter.toLowerCase()) ||
+    v.path.toLowerCase().includes(filter.toLowerCase())
+  );
 
   function getRecoveredPath(path: string) {
-    const separatorIndex = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
-    const fileName = separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
+    const sep = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+    const fileName = sep >= 0 ? path.slice(sep + 1) : path;
     const base = path.slice(0, path.length - fileName.length);
-    const dotIndex = fileName.lastIndexOf(".");
-    if (dotIndex > 0) {
-      return `${base}${fileName.slice(0, dotIndex)}_recovered${fileName.slice(dotIndex)}`;
-    }
-    return `${base}${fileName}_recovered`;
+    const dot = fileName.lastIndexOf('.');
+    return dot > 0
+      ? `${base}${fileName.slice(0, dot)}_recovered${fileName.slice(dot)}`
+      : `${base}${fileName}_recovered`;
   }
 
-  async function handleRecover() {
-    if (!selectedVideoPath) return;
-    setRecoverMessage(null);
-    setIsRecovering(true);
-
-    try {
-      const outputFolder = selectedVideoPath.replace(/[^\\/]+$/, "");
-      const result = await invoke<string>("recover_broken_video", {
-        path: selectedVideoPath,
-        outputFolder,
+  // Обновлённая функция с поддержкой reference файла
+  async function recoverOne(path: string, useReference: boolean = false) {
+    let referencePath: string | null = null;
+    
+    // Если выбрали режим "С образцом", сначала просим пользователя выбрать файл
+    if (useReference) {
+      const selectedFile = await open({
+        title: 'Выберите исправное видео с той же камеры (образец)',
+        filters: [{ name: 'Видео', extensions: ['mp4', 'mov', 'avi', 'mkv', '3gp'] }],
+        multiple: false,
       });
-      setRecoverMessage(result || "Восстановление завершено.");
-    } catch (error) {
-      setRecoverMessage(typeof error === "string" ? error : "Не удалось запустить восстановление.");
+      
+      if (!selectedFile) return; // Пользователь отменил выбор
+      referencePath = selectedFile as string;
+    }
+
+    setRecovering(prev => new Set(prev).add(path));
+    try {
+      const outputFolder = path.replace(/[^\\/]+$/, '');
+      let msg: any;
+      
+      if (referencePath) {
+        msg = await invoke<string>('recover_broken_video_with_reference', { 
+          path, 
+          outputFolder, 
+          referencePath 
+        });
+      } else {
+        msg = await invoke<string>('recover_broken_video', { 
+          path, 
+          outputFolder 
+        });
+      }
+      
+      setResults(prev => ({ ...prev, [path]: { ok: true, msg: 'Успешно: файл сохранён.' } }));
+    } catch (err) {
+      setResults(prev => ({ ...prev, [path]: { ok: false, msg: typeof err === 'string' ? err : 'Ошибка восстановления.' } }));
     } finally {
-      setIsRecovering(false);
+      setRecovering(prev => { const s = new Set(prev); s.delete(path); return s; });
     }
   }
+
+  async function recoverAll_fn() {
+    setRecoverAll(true);
+    setRecoverAllMsg(null);
+    const failed: string[] = [];
+    
+    for (const v of brokenVideos) {
+      try {
+        const outputFolder = v.path.replace(/[^\\/]+$/, '');
+        // Массово пробуем только авто-восстановление
+        await invoke('recover_broken_video', { path: v.path, outputFolder });
+        setResults(prev => ({ ...prev, [v.path]: { ok: true, msg: 'Успешно восстановлено.' } }));
+      } catch (err) {
+        failed.push(v.fileName);
+        setResults(prev => ({ ...prev, [v.path]: { ok: false, msg: typeof err === 'string' ? err : 'Ошибка.' } }));
+      }
+    }
+    
+    setRecoverAllMsg(
+      failed.length === 0
+        ? `Все ${brokenVideos.length} файлов восстановлены успешно.`
+        : `Восстановлено ${brokenVideos.length - failed.length} из ${brokenVideos.length}. Для оставшихся ${failed.length} попробуйте ручной режим с образцом.`
+    );
+    setRecoverAll(false);
+  }
+
+  const selectedVideo = brokenVideos.find(v => v.path === selected) ?? null;
+  const doneCount = Object.values(results).filter(r => r.ok).length;
 
   return (
-    <div className="recovery-panel">
-      <div className="recovery-hero">
-        <div>
-          <p className="eyebrow">Восстановление</p>
-          <h3>Выберите битый файл и восстановите его одним кликом</h3>
-          <p>AI уже пометил проблемные видео. Просто выберите файл, и система восстановит копию рядом с оригиналом.</p>
+    <div className="rp-root">
+      {/* Hero Header */}
+      <div className="rp-hero">
+        <div className="rp-hero-left">
+          <span className="rp-eyebrow">AI Восстановление</span>
+          <h2 className="rp-title">Восстановление файлов</h2>
+          <p className="rp-subtitle">
+            Система нашла&nbsp;<strong>{brokenVideos.length}</strong>&nbsp;битых видео.
+            {doneCount > 0 && <>&nbsp;Восстановлено: <strong>{doneCount}</strong>.</>}
+          </p>
         </div>
-        <div className="recovery-hero-cards">
-          <div className="recovery-card">
-            <strong>Быстрый выбор</strong>
-            <p>Никаких дополнительных папок: выбираете только битый файл.</p>
+        <div className="rp-hero-stats">
+          <div className="rp-stat">
+            <span className="rp-stat-num rp-stat-broken">{brokenVideos.length}</span>
+            <span className="rp-stat-label">Битых</span>
           </div>
-          <div className="recovery-card">
-            <strong>Автоматический результат</strong>
-            <p>Файл восстанавливается рядом с оригиналом, с суффиксом <code>_recovered</code>.</p>
+          <div className="rp-stat-divider" />
+          <div className="rp-stat">
+            <span className="rp-stat-num rp-stat-ok">{doneCount}</span>
+            <span className="rp-stat-label">Готово</span>
           </div>
         </div>
       </div>
 
-      <div className="recovery-restore">
-        <div className="recovery-topline">
-          <div>
-            <h4>Проверенные битые файлы</h4>
-            <p>Выберите один из найденных битых файлов и запустите восстановление.</p>
-          </div>
-          <span className="recovery-chip">{brokenVideos.length} файлов</span>
+      {brokenVideos.length === 0 ? (
+        <div className="rp-empty">
+          <span className="rp-empty-icon">🎉</span>
+          <strong>Битых файлов не найдено</strong>
+          <p>Запустите AI-анализ, чтобы проверить видеотеку на повреждённые файлы.</p>
         </div>
+      ) : (
+        <>
+          {/* Toolbar */}
+          <div className="rp-toolbar">
+            <div className="management-search">
+              <Search className="icon" />
+              <input
+                value={filter}
+                placeholder="Фильтр по имени или пути..."
+                onChange={e => setFilter(e.target.value)}
+              />
+            </div>
+            <button
+              className="btn rp-recover-all-btn"
+              onClick={recoverAll_fn}
+              disabled={recoverAll || brokenVideos.length === 0}
+            >
+              {recoverAll
+                ? <><Loader2 size={15} className="spin" /> Авто-восстановление...</>
+                : <><RotateCcw size={15} /> Восстановить все ({brokenVideos.length})</>
+              }
+            </button>
+          </div>
 
-        <div className="recovery-controls">
-          {brokenVideos.length ? (
-            <>
-              <div className="recovery-file-grid">
-                {brokenVideos.map((item) => (
-                  <button
-                    key={item.path}
-                    type="button"
-                    className={`recovery-file-card ${selectedVideoPath === item.path ? "recovery-file-card-active" : ""}`}
-                    onClick={() => setSelectedVideoPath(item.path)}
-                  >
-                    <div className="recovery-file-head">
-                      <strong>{item.fileName}</strong>
-                      <span>{item.issue || "Неизвестная причина"}</span>
-                    </div>
-                    <div className="recovery-file-meta">
-                      <small>{item.parentFolder}</small>
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="recovery-summary-grid">
-                <div className="recovery-selected-card">
-                  <span className="recovery-selected-label">Выбранный файл</span>
-                  <strong>{selectedVideo?.fileName ?? "Не выбран файл"}</strong>
-                  {selectedVideo ? (
-                    <div className="recovery-selected-meta">
-                      <span>Папка: {selectedVideo.parentFolder}</span>
-                      <span>Причина: {selectedVideo.issue || "Не указана"}</span>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="recovery-output-card">
-                  <span className="recovery-selected-label">Путь восстановления</span>
-                  <code>{outputPath || "Выберите битый файл"}</code>
-                </div>
-              </div>
-
-              <div className="recovery-actions-row">
-                <button
-                  className="badge badge-open-folder recovery-action"
-                  type="button"
-                  disabled={!selectedVideoPath || isRecovering}
-                  onClick={handleRecover}
-                >
-                  {isRecovering ? "Восстановление..." : "Восстановить файл"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="empty-state">Нет найденных битых видео. Запустите AI-анализ или проверьте результаты скана.</div>
+          {recoverAllMsg && (
+            <div className={`rp-all-result ${recoverAllMsg.includes('оставшихся') ? 'rp-all-error' : 'rp-all-ok'}`}>
+              {recoverAllMsg}
+            </div>
           )}
 
-          {recoverMessage ? <div className="recovery-message">{recoverMessage}</div> : null}
-        </div>
-      </div>
+          {/* Split layout */}
+          <div className="rp-split">
+            {/* File list */}
+            <div className="rp-file-list">
+              {filtered.length === 0 && (
+                <div className="rp-no-match">Нет совпадений</div>
+              )}
+              {filtered.map(video => {
+                const res = results[video.path];
+                const isRecovering = recovering.has(video.path);
+                const isSelected = selected === video.path;
+                return (
+                  <button
+                    key={video.path}
+                    className={`rp-file-card${isSelected ? ' rp-file-card-active' : ''}${res?.ok ? ' rp-file-card-done' : ''}${res && !res.ok ? ' rp-file-card-err' : ''}`}
+                    onClick={() => setSelected(video.path)}
+                  >
+                    <div className="rp-file-card-top">
+                      <span className="rp-file-icon">
+                        {res?.ok ? '✅' : res ? '❌' : isRecovering ? '⏳' : '🔴'}
+                      </span>
+                      <div className="rp-file-card-info">
+                        <strong className="rp-file-name">{video.fileName}</strong>
+                        <small className="rp-file-issue">{video.issue || 'Неизвестная ошибка'}</small>
+                      </div>
+                    </div>
+                    <small className="rp-file-path">{video.parentFolder}</small>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Detail panel */}
+            <div className="rp-detail">
+              {!selectedVideo ? (
+                <div className="rp-detail-empty">
+                  <span>👈</span>
+                  <p>Выберите файл из списка слева для восстановления</p>
+                </div>
+              ) : (
+                <div className="rp-detail-content">
+                  <div className="rp-detail-header">
+                    <h3 className="rp-detail-filename">{selectedVideo.fileName}</h3>
+                    <span className={`rp-detail-status ${results[selected!]?.ok ? 'ok' : 'pending'}`}>
+                      {results[selected!]?.ok ? 'Восстановлен' : 'Ожидает'}
+                    </span>
+                  </div>
+
+                  <div className="rp-meta-grid">
+                    <div className="rp-meta-item">
+                      <span className="rp-meta-key">Причина</span>
+                      <span className="rp-meta-val">{selectedVideo.issue || '—'}</span>
+                    </div>
+                    <div className="rp-meta-item">
+                      <span className="rp-meta-key">Размер</span>
+                      <span className="rp-meta-val">{(selectedVideo.fileSizeBytes / 1024 / 1024).toFixed(2)} MB</span>
+                    </div>
+                  </div>
+
+                  <div className="rp-path-block">
+                    <span className="rp-path-label">Оригинал</span>
+                    <code className="rp-path-code">{selectedVideo.path}</code>
+                    <span className="rp-path-label">Результат будет сохранён как:</span>
+                    <code className="rp-path-code rp-path-out">{getRecoveredPath(selectedVideo.path)}</code>
+                  </div>
+
+                  {results[selected!] && (
+                    <div className={`rp-result-box ${results[selected!].ok ? 'ok' : 'err'}`}>
+                      {results[selected!].ok ? <CheckCircle2 size={18} /> : <TriangleAlert size={18} className="shrink-0" />}
+                      <span>{results[selected!].msg}</span>
+                    </div>
+                  )}
+
+                  <div className="rp-detail-actions">
+                    <button
+                      className="btn rp-open-btn"
+                      onClick={() => openPathInExplorer(selectedVideo.parentFolder)}
+                      title="Открыть папку"
+                    >
+                      <FolderOpen size={16} />
+                    </button>
+                    
+                    <div className="rp-recover-group">
+                      <button
+                        className="btn rp-recover-btn"
+                        onClick={() => recoverOne(selectedVideo.path, false)}
+                        disabled={recovering.has(selectedVideo.path) || results[selectedVideo.path]?.ok}
+                      >
+                        {recovering.has(selectedVideo.path)
+                          ? <><Loader2 size={15} className="spin" /> Ремонт...</>
+                          : results[selectedVideo.path]?.ok
+                            ? <><CheckCircle2 size={15} /> Готово</>
+                            : <><RotateCcw size={15} /> Авто</>
+                        }
+                      </button>
+                      <button
+                        className="btn rp-recover-ref-btn"
+                        onClick={() => recoverOne(selectedVideo.path, true)}
+                        disabled={recovering.has(selectedVideo.path) || results[selectedVideo.path]?.ok}
+                        title="Выбрать здоровое видео с этой же камеры для починки контейнера"
+                      >
+                        <FileVideo size={15} /> С образцом
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-export function SettingsPanel({ settings, onChange }: { settings: PanelSettings; onChange: (settings: PanelSettings) => void }) {
-  const toggleOptions: Array<{
+// Заглушка, если вдруг у тебя нет openPathInExplorer в этом файле
+// async function openPathInExplorer(path: string) {
+//   const { invoke } = await import('@tauri-apps/api/core');
+//   await invoke('open_path_in_explorer', { path }).catch(console.error);
+// }
+
+export function SettingsPanel({
+  settings,
+  onChange,
+}: {
+  settings: PanelSettings;
+  onChange: (settings: PanelSettings) => void;
+}) {
+  const options: Array<{
     key: keyof PanelSettings;
-    title: string;
-    description: string;
+    label: string;
+    desc: string;
+    emoji: string;
+    color: string;
+    tag?: string;
   }> = [
-    { key: "showAi", title: "AI Анализ", description: "Показывать блок AI-результатов в дереве." },
-    { key: "showControl", title: "Контроль", description: "Включить панель контроля качества и удаление подозрительных файлов." },
-    { key: "showIntelligence", title: "Intelligence", description: "Показать стратегические метрики и приоритеты просмотра." },
-    { key: "showRecovery", title: "Восстановление", description: "Показывать страницу восстановления битых файлов." },
+    {
+      key: 'showAi',
+      label: 'AI Анализ',
+      desc: 'Блок AI-результатов: короткие видео, сценарии 6–30 сек, битые файлы.',
+      emoji: '🤖',
+      color: '#38bdf8',
+      // tag: 'Рекомендуется',
+    },
+    {
+      key: 'showControl',
+      label: 'Контроль качества',
+      desc: 'Ручное управление очередью проверки, удаление подозрительных файлов.',
+      emoji: '🛡️',
+      color: '#a78bfa',
+    },
+    {
+      key: 'showIntelligence',
+      label: 'Intelligence Center',
+      desc: 'Стратегические метрики, приоритеты просмотра и Executive Dashboard.',
+      emoji: '💡',
+      color: '#fbbf24',
+    },
+    {
+      key: 'showRecovery',
+      label: 'Восстановление файлов',
+      desc: 'Страница восстановления битых видео с AI-разметкой проблем.',
+      emoji: '🔧',
+      color: '#34d399',
+    },
   ];
 
+  const enabledCount = options.filter(o => settings[o.key]).length;
+
   return (
-    <div className="settings-panel">
-      <div className="settings-header">
+    <div className="sp-root" style={{paddingBottom: '60px'}}>
+      {/* Hero */}
+      <div className="sp-hero">
         <div>
-          <h3>Настройки интерфейса</h3>
-          <p>Управляйте видимостью блоков и делайте рабочее пространство чище.</p>
+          <span className="sp-eyebrow">Конфигурация интерфейса</span>
+          <h2 className="sp-title">Настройки</h2>
+          <p className="sp-sub">
+            Включено&nbsp;<strong>{enabledCount}</strong>&nbsp;из&nbsp;<strong>{options.length}</strong> панелей.
+            Изменения применяются мгновенно.
+          </p>
+        </div>
+        <div className="sp-counter">
+          <svg viewBox="0 0 64 64" className="sp-ring-svg">
+            <circle cx="32" cy="32" r="26" className="sp-ring-bg" />
+            <circle
+              cx="32" cy="32" r="26"
+              className="sp-ring-fill"
+              style={{
+                strokeDasharray: `${(enabledCount / options.length) * 163.4} 163.4`,
+              }}
+            />
+          </svg>
+          <span className="sp-ring-num">{enabledCount}</span>
         </div>
       </div>
-      <div className="settings-grid">
-        {toggleOptions.map((option) => (
-          <div key={option.key} className="settings-option">
-            <div>
-              <span>{option.title}</span>
-              <p>{option.description}</p>
-            </div>
-            <label className="settings-switch">
-              <div className="switch-control">
+
+      <div className="sp-grid">
+        {options.map(option => (
+          <div
+            key={option.key}
+            className={`sp-card${settings[option.key] ? ' sp-card-on' : ''}`}
+            style={{ '--sp-accent': option.color } as React.CSSProperties}
+          >
+            <div className="sp-card-top">
+              <span className="sp-emoji">{option.emoji}</span>
+              <div className="sp-card-info">
+                <span className="sp-card-label">{option.label}</span>
+                {option.tag && <span className="sp-tag">{option.tag}</span>}
+              </div>
+              <label className="switch-control">
                 <input
                   type="checkbox"
                   checked={settings[option.key]}
-                  onChange={(event) => onChange({ ...settings, [option.key]: event.target.checked })}
+                  onChange={e => onChange({ ...settings, [option.key]: e.target.checked })}
                 />
-                <span className="switch-track">
-                  <span className="switch-thumb" />
-                </span>
-              </div>
-            </label>
+                <span className="switch-track"><span className="switch-thumb" /></span>
+              </label>
+            </div>
+            <p className="sp-card-desc">{option.desc}</p>
+            <div className="sp-card-bar" />
           </div>
         ))}
       </div>
+        {/* <div style={{marginBottom: '20px'}}></div> */}
+      {/* <p className="sp-hint">⚡ Изменения применяются мгновенно — без перезапуска приложения.</p> */}
     </div>
   );
 }
-
 function sortFolderTree(node: FolderNode, sortBy: TreeSort): FolderNode {
   const sortedChildren = node.children
     .map((child) => sortFolderTree(child, sortBy))

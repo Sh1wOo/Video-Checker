@@ -28,11 +28,9 @@ async fn start_scan(
     }
 
     let task_app = app.clone();
-
     let result = tokio::task::spawn_blocking(move || {
         let scan_app = task_app.clone();
         let emit_app = task_app.clone();
-
         scanner::scan_path(&scan_app, &root_path, move |event| {
             let _ = emit_app.emit("scan://event", event);
         })
@@ -58,7 +56,6 @@ async fn start_scan(
                     scanner::format_duration(scan.summary.total_duration_sec)
                 ))
                 .show();
-
             Ok(scan)
         }
         Err(err) => Err(err.to_string()),
@@ -83,7 +80,6 @@ async fn delete_video_file(path: String) -> Result<(), String> {
         if !path.is_file() {
             return Err("Удалять можно только файл видео".to_string());
         }
-
         std::fs::remove_file(&path)
             .map_err(|error| format!("Не удалось удалить видео: {}", error))
     })
@@ -106,13 +102,42 @@ async fn save_report(path: String, content: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn recover_broken_video(path: String, output_folder: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        scanner::recover::recover_broken_video(&path, &output_folder, None)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn recover_broken_video_with_reference(
+    path: String,
+    output_folder: String,
+    reference_path: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        scanner::recover::recover_broken_video(&path, &output_folder, Some(reference_path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(AppScanState::default()))
-        .invoke_handler(tauri::generate_handler![start_scan, run_ai_analysis, delete_video_file, save_report])
+        .invoke_handler(tauri::generate_handler![
+            start_scan,
+            run_ai_analysis,
+            delete_video_file,
+            save_report,
+            recover_broken_video,
+            recover_broken_video_with_reference
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

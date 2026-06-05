@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod cache;
 pub mod media;
+pub mod recover;
 
 use crate::scanner::cache::ScanCache;
 use crate::scanner::media::probe_duration;

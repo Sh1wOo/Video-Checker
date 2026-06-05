@@ -6,6 +6,7 @@ import { ProgressSection } from "./components/ProgressSection";
 import { StatsPanel } from "./components/StatsPanel";
 import { TreePanel, RecoveryPanel, SettingsPanel, PanelSettings } from "./components/TreePanel";
 import { useScan } from "./hooks/useScan";
+import { Home, RotateCcw, Settings2} from "lucide-react";
 // import logo from "../public/b32d4286-273e-4c5d-9f4f-a0a852f20650.png";
 
 export default function App() {
@@ -14,9 +15,9 @@ export default function App() {
 
   const [page, setPage] = useState<"main" | "recovery" | "settings">("main");
   const [panelSettings, setPanelSettings] = useState<PanelSettings>({
-    showAi: false,
+    showAi: true,
     showControl: false,
-    showIntelligence: true,
+    showIntelligence: false,
     showRecovery: true,
   });
   const {
@@ -162,31 +163,38 @@ export default function App() {
             </div>
           )}
         </div>
-        <div className="bottom-dock">
-          <button
-            className={`bottom-dock-button ${page === "main" ? "bottom-dock-active" : ""}`}
-            type="button"
-            onClick={() => setPage("main")}
-          >
-            Главная
-          </button>
-          {panelSettings.showRecovery ? (
-            <button
-              className={`bottom-dock-button ${page === "recovery" ? "bottom-dock-active" : ""}`}
-              type="button"
-              onClick={() => setPage("recovery")}
-            >
-              Восстановление
-            </button>
-          ) : null}
-          <button
-            className={`bottom-dock-button ${page === "settings" ? "bottom-dock-active" : ""}`}
-            type="button"
-            onClick={() => setPage("settings")}
-          >
-            Настройки
-          </button>
-        </div>
+<nav className="bottom-dock">
+  <button
+    className={`bottom-dock-button${page === "main" ? " bottom-dock-active" : ""}`}
+    onClick={() => setPage("main")}
+  >
+    <Home className="dock-icon" />
+    Главная
+  </button>
+
+  {panelSettings.showRecovery ? (
+    <>
+      <span className="dock-separator" />
+      <button
+        className={`bottom-dock-button${page === "recovery" ? " bottom-dock-active" : ""}`}
+        onClick={() => setPage("recovery")}
+      >
+        <RotateCcw className="dock-icon" />
+        Восстановление
+      </button>
+    </>
+  ) : null}
+
+  <span className="dock-separator" />
+
+  <button
+    className={`bottom-dock-button${page === "settings" ? " bottom-dock-active" : ""}`}
+    onClick={() => setPage("settings")}
+  >
+    <Settings2 className="dock-icon" />
+    Настройки
+  </button>
+</nav>
       </div>
       {refreshMenu ? (
         <div className="refresh-context-menu" style={{ left: refreshMenu.x, top: refreshMenu.y }}>
