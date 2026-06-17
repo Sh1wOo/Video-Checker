@@ -11,7 +11,6 @@ import {
   formatPercent,
   formatUnixDate,
   sortFindings,
-  topBars,
 } from "../../lib/analysis-utils";
 import { InfoTip } from "./InfoTip";
 import { BarChartCard } from "./BarChartCard";

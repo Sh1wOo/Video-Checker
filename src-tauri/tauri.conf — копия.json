@@ -27,7 +27,7 @@
   },
 "bundle": {
   "active": true,
-  "targets": "nsis",
+  "targets": "all",
   "icon": [
     "icons/32x32.png",
     "icons/128x128.png",
@@ -42,9 +42,6 @@
   "longDescription": "Raduga Dataset Video Community — free video dataset scanner, analyzer, and Android/VR file manager. Counts video duration, detects broken/short files with AI analysis. For non-commercial use only.",
   "licenseFile": "../LICENSE.txt",
   "windows": {
-    "nsis": {
-       "installMode": "currentUser"
-    },
     "digestAlgorithm": "sha256",
     "timestampUrl": ""
   },
