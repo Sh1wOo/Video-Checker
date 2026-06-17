@@ -1,0 +1,54 @@
+RADUGA NON-COMMERCIAL SOFTWARE LICENSE
+Version 1.0, June 2025
+
+Copyright (c) 2025 Raduga Photo (raduga.top)
+
+DEFINITIONS
+"Software" means Raduga Dataset Video Community and all accompanying source code,
+compiled binaries, scripts, documentation, and assets distributed in this package.
+"Licensor" means Raduga Photo.
+"You" means any individual or organization exercising rights under this license.
+"Non-Commercial Use" means use that is not primarily intended for or directed
+towards commercial advantage or monetary compensation.
+
+GRANT OF LICENSE
+Subject to the terms and conditions of this License, the Licensor hereby grants
+You a worldwide, royalty-free, non-exclusive, non-transferable license to:
+
+  1. Download, install, and use the Software for personal or internal
+     non-commercial purposes only.
+  2. Copy and distribute verbatim copies of the Software for non-commercial
+     purposes, provided you retain all copyright notices and this license.
+  3. Modify the Software for your own non-commercial use.
+
+RESTRICTIONS
+You may NOT:
+
+  a) Use the Software, in whole or in part, for commercial purposes, including
+     but not limited to: selling, licensing, or distributing the Software (or
+     products derived from it) for monetary compensation.
+  b) Use the Software as part of a paid service or SaaS offering.
+  c) Remove or alter any copyright notices, license text, branding, or
+     attribution contained in the Software.
+  d) Sublicense, sell, rent, lease, or transfer rights granted under this
+     License to any third party.
+  e) Use the Software or any portion of it to train commercial AI/ML models.
+
+ATTRIBUTION
+Any permitted redistribution must include:
+  - This license file (LICENSE.txt) without modification.
+  - Clear attribution: "Raduga Dataset Video Community by Raduga Photo (raduga.top)".
+
+DISCLAIMER OF WARRANTIES
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+TERMINATION
+Your rights under this License terminate automatically upon any breach of its
+terms. Upon termination, you must destroy all copies of the Software.
+
+For commercial licensing inquiries, contact: info@raduga.top

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Raduga Dataset Video Community",
+  "version": "0.3.5",
+  "identifier": "top.raduga.dataset-video-community",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Raduga Dataset Video Community",
+        "width": 1280,
+        "height": 720,
+        "minWidth": 960,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+"bundle": {
+  "active": true,
+  "targets": "all",
+  "icon": [
+    "icons/32x32.png",
+    "icons/128x128.png",
+    "icons/128x128@2x.png",
+    "icons/icon.icns",
+    "icons/icon.ico"
+  ],
+  "publisher": "Raduga Photo",
+  "copyright": "© 2026 Raduga Photo. Free for non-commercial use.",
+  "category": "Utility",
+  "shortDescription": "Video dataset scanner and manager for PC and Android/VR devices",
+  "longDescription": "Raduga Dataset Video Community — free video dataset scanner, analyzer, and Android/VR file manager. Counts video duration, detects broken/short files with AI analysis. For non-commercial use only.",
+  "licenseFile": "../LICENSE.txt",
+  "windows": {
+    "digestAlgorithm": "sha256",
+    "timestampUrl": ""
+  },
+  "macOS": {
+    "minimumSystemVersion": "10.15"
+  }
+},
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_REAL_PUBLIC_KEY",
+      "endpoints": [
+        "https://raduga.top/releases/{{target}}/{{arch}}/{{current_version}}"
+      ]
+    },
+    "process": {}
+  }
+}

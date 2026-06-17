@@ -1,0 +1,35 @@
+[package]
+name = "raduga-dataset-video-community"
+version = "0.3.5"
+description = "Raduga Dataset Video Community — free video dataset scanner and Android/VR file manager"
+authors = ["Raduga Photo <info@raduga.top>"]
+license = "LicenseRef-Raduga-NC-1.0"
+edition = "2021"
+repository = "https://github.com/Sh1wOo/Video-Checker"
+homepage = "https://raduga.top"
+
+[lib]
+name = "raduga_dataset_video_community_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+parking_lot = "0.12"
+rayon = "1.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+yolo-rs = "0.2.2"
+image = "0.25.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+walkdir = "2"
+which = "6"
